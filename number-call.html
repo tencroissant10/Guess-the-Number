@@ -1,0 +1,459 @@
+<title>ナンバーコール</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: one centered column like a phone's call screen; each phase is one panel. */
+:root {
+  --bg: #eef1f6; --surface: #ffffff; --fg: #1b2033; --muted: #5d6680; --line: #d6dbe7; --soft: #e6eaf3;
+  --c0: #2f5bd8; --c1: #e2632b; --c2: #1f9a6b; --c3: #b03fb8; --c4: #c79a12; --c5: #d83a62;
+  --ok: #1f8a4c; --ng: #c23b3b; --lcd: #1b2033; --lcd-fg: #ffd84a; --lcd-sub: #c9cfe0;
+  --display: "Dela Gothic One", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --digit: "DotGothic16", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151f; --surface: #1c2130; --fg: #e9ecf5; --muted: #9aa3ba; --line: #2e3549; --soft: #252b3d;
+  --c0: #7d9bff; --c1: #ff9a68; --c2: #4fd3a0; --c3: #e18be8; --c4: #f2c94c; --c5: #ff7d9c;
+  --ok: #5fd08d; --ng: #ff7b7b; --lcd: #0b0d14; --lcd-fg: #ffd84a; --lcd-sub: #9aa3ba; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151f; --surface: #1c2130; --fg: #e9ecf5; --muted: #9aa3ba; --line: #2e3549; --soft: #252b3d;
+  --c0: #7d9bff; --c1: #ff9a68; --c2: #4fd3a0; --c3: #e18be8; --c4: #f2c94c; --c5: #ff7d9c;
+  --ok: #5fd08d; --ng: #ff7b7b; --lcd: #0b0d14; --lcd-fg: #ffd84a; --lcd-sub: #9aa3ba; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 48px; }
+.wrap { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px }
+#view { display: flex; flex-direction: column; gap: 16px }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap }
+h1 { font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: .02em }
+h1 span { color: var(--c0) } h1 span + span { color: var(--c1) }
+.room-tag { font-size: 13px; color: var(--muted) }
+.room-tag b { font-family: var(--digit); font-size: 18px; color: var(--fg); letter-spacing: .15em; font-weight: 400 }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 14px }
+h2 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; text-wrap: balance }
+p { margin: 0 } .muted { color: var(--muted); font-size: 13px }
+.lcd { background: var(--lcd); color: var(--lcd-fg); font-family: var(--digit); border-radius: 10px; padding: 14px 16px;
+  font-size: 44px; line-height: 1; text-align: center; letter-spacing: .08em; font-variant-numeric: tabular-nums }
+.lcd small { display: block; font-family: var(--body); font-size: 12px; color: var(--lcd-sub); letter-spacing: .05em; margin-bottom: 8px }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
+.row > input { flex: 1 1 140px; min-width: 0 }
+input { font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg) }
+input.num { font-family: var(--digit); font-size: 26px; text-align: center; letter-spacing: .1em }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--c0) }
+input:focus-visible, button:focus-visible { outline: 3px solid var(--c0); outline-offset: 2px }
+button { font: inherit; font-weight: 700; border: 0; border-radius: 10px; padding: 11px 18px; cursor: pointer; background: var(--fg); color: var(--bg) }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); font-weight: 400 }
+button.big { font-size: 17px; padding: 14px 22px; width: 100% }
+button.small { padding: 6px 10px; font-size: 13px }
+button:disabled { opacity: .4; cursor: not-allowed }
+.dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--pc) }
+.roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px }
+.roster li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--soft); border: 2px solid transparent; min-width: 0 }
+.roster li.me { border-color: var(--pc) }
+.roster li.turn { background: var(--surface); border-color: var(--pc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 25%, transparent) }
+.roster .nm { font-weight: 700; overflow-wrap: anywhere; min-width: 0 }
+.roster .sub { font-size: 12px; color: var(--muted) }
+.roster .who { display: flex; flex-direction: column; min-width: 0 }
+.roster .val { margin-left: auto; font-family: var(--digit); font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap }
+.roster .val.hid { font-family: var(--body); font-size: 12px; color: var(--muted) }
+.roster .badge { font-size: 11px; font-weight: 700; color: var(--pc); letter-spacing: .05em; white-space: nowrap }
+.range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.picker { display: inline-flex; gap: 6px; flex: 1 1 180px; min-width: 0 }
+select { font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); padding: 10px 8px }
+.picker select.num { flex: 1 1 auto; min-width: 0; font-family: var(--digit); font-size: 24px; text-align: center }
+.picker select.unit { flex: 0 0 auto; font-size: 20px; font-weight: 700 }
+.range .picker select.num { font-size: 18px } .range .picker select.unit { font-size: 16px }
+.range .picker { flex: 0 1 170px }
+select:focus-visible { outline: 3px solid var(--c0); outline-offset: 2px }
+label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
+.turnbar { display: flex; align-items: center; gap: 10px; font-weight: 700 }
+.callout { border-left: 4px solid var(--pc); padding: 4px 0 4px 12px }
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto }
+.log li { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 6px 10px; background: var(--bg); border-radius: 8px }
+.log .g { font-family: var(--digit); font-size: 20px; min-width: 3.5em; font-variant-numeric: tabular-nums }
+.log .r { margin-left: auto; font-weight: 700; font-size: 13px }
+.log .r.ok { color: var(--ok) } .log .r.ng { color: var(--ng) } .log .r.ps { color: var(--muted); font-weight: 400 }
+.err { color: var(--ng); font-size: 13px; min-height: 1em }
+.win { text-align: center; align-items: center }
+.win .crown { font-family: var(--display); font-size: 34px; color: var(--pc) }
+.win .roster { width: 100%; text-align: left }
+.rules { font-size: 13px; color: var(--muted); padding-left: 1.2em; margin: 0 }
+.foot { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap }
+@media (prefers-reduced-motion: no-preference) { .panel { animation: in .25s ease-out } @keyframes in { from { transform: translateY(6px) } to { transform: none } } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span>ナンバー</span><span>コール</span></h1>
+    <div class="room-tag" id="roomTag" hidden>ルーム <b id="roomCode"></b></div>
+  </header>
+  <div id="view">
+    <section class="panel"><h2>読み込み中…</h2><p class="muted">ゲームのデータに接続しています。</p></section>
+  </div>
+  <div class="foot" id="foot" hidden><button class="ghost" id="leaveBtn">ルームを出る</button></div>
+</div>
+
+<script>
+(function () {
+  const MAX_PLAYERS = 8;
+
+  // ---- the numbers you can pick ----
+  // Per unit (なし・万・億・兆): 0〜100 every number, 100〜1000 the first two digits (110, 530…), 1000〜9000 the first digit only.
+  const BASE = []; for (let i = 0; i <= 100; i++) BASE.push(i); for (let i = 110; i <= 990; i += 10) BASE.push(i); for (let i = 1000; i <= 9000; i += 1000) BASE.push(i);
+  const BASE_SET = new Set(BASE);
+  const UNITS = [{ v: 1, k: '' }, { v: 1e4, k: '万' }, { v: 1e8, k: '億' }, { v: 1e12, k: '兆' }];
+  const VALUES = [...new Set(UNITS.flatMap(u => BASE.map(b => b * u.v)))].sort((a, b) => a - b);
+  const VALID = new Set(VALUES);
+  const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
+  function split(n) {
+    for (let i = UNITS.length - 1; i >= 0; i--) { const u = UNITS[i]; if (n % u.v === 0 && BASE_SET.has(n / u.v)) return { b: n / u.v, u: u.v } }
+    return { b: 0, u: 1 };
+  }
+  function fmt(n) { if (n == null) return '-'; const s = split(n); return s.b + (UNITS.find(u => u.v === s.u) || UNITS[0]).k }
+  const rangeTxt = () => `${fmt(state.min)} 〜 ${fmt(state.max)}`;
+  const inRange = () => VALUES.filter(v => v >= state.min && v <= state.max);
+  function picker(prefix, value, opts) {
+    const s = split(value == null ? 0 : value), fresh = opts && opts.fresh ? ' data-fresh="1"' : '', dis = opts && opts.disabled ? ' disabled' : '';
+    return `<span class="picker">
+      <select id="${prefix}N" class="num" aria-label="数字"${fresh}${dis}>${BASE.map(b => `<option value="${b}"${b === s.b ? ' selected' : ''}>${b}</option>`).join('')}</select>
+      <select id="${prefix}U" class="unit" aria-label="単位"${fresh}${dis}>${UNITS.map(u => `<option value="${u.v}"${u.v === s.u ? ' selected' : ''}>${u.k || '—'}</option>`).join('')}</select></span>`;
+  }
+  const readPicker = prefix => parseInt(document.getElementById(prefix + 'N').value, 10) * Number(document.getElementById(prefix + 'U').value);
+  const LS = {
+    get(k) { try { return localStorage.getItem(k) } catch (e) { return null } },
+    set(k, v) { try { localStorage.setItem(k, v) } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k) } catch (e) {} }
+  };
+  const view = document.getElementById('view');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const rid = n => { const c = 'abcdefghijkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * c.length)]; return s };
+
+  let db = null, ref = null, unsub = null, state = null, roomCode = null, me = null, busy = false, loadTimer = null, stale = false;
+  let lastSig = '';
+
+  function freshRoom() {
+    return { status: 'lobby', min: MIN_ALL, max: MAX_ALL, showAll: true, players: {}, order: [], secrets: {},
+      firstIdx: 0, turnIdx: 0, log: [], winner: null, round: 1 };
+  }
+
+  // ---- player helpers ----
+  const joined = () => Object.keys(state.players).filter(id => state.players[id]).sort((a, b) => (state.players[a].t || 0) - (state.players[b].t || 0) || (a < b ? -1 : 1));
+  const order = () => (state.status === 'lobby' ? joined() : state.order.filter(id => state.players[id] || true));
+  const idx = id => order().indexOf(id);
+  const nextOf = id => { const o = order(); return o[(o.indexOf(id) + 1) % o.length] };     // the player whose number `id` chooses
+  const setterOf = id => { const o = order(); return o[(o.indexOf(id) - 1 + o.length) % o.length] }; // who chose `id`'s number
+  const colorOf = id => { const i = Math.max(0, (state.status === 'lobby' ? joined() : state.order).indexOf(id)); return `var(--c${i % 6})` };
+  const nameOf = id => (state.players[id] && state.players[id].name) || 'プレイヤー';
+  const turnId = () => state.order[state.turnIdx % state.order.length];
+  const canSee = id => id !== me && (state.showAll || setterOf(id) === me);
+
+  // ---------- rendering (keeps typed input + focus across live updates) ----------
+  function paint(html, sig) {
+    if (sig === lastSig) return;
+    lastSig = sig;
+    const keep = {}; let focusId = null;
+    view.querySelectorAll('input[id], select[id]').forEach(i => { keep[i.id] = i.value });
+    if (document.activeElement && document.activeElement.id) focusId = document.activeElement.id;
+    view.innerHTML = html;
+    Object.keys(keep).forEach(id => { const el = document.getElementById(id); if (el && !el.dataset.fresh && el.type !== 'checkbox') el.value = keep[id] });
+    if (focusId) { const el = document.getElementById(focusId); if (el) el.focus() }
+  }
+
+  function render() {
+    document.getElementById('roomTag').hidden = !roomCode;
+    document.getElementById('roomCode').textContent = roomCode || '';
+    document.getElementById('foot').hidden = !roomCode;
+    if (!db) return;
+    if (!roomCode) return renderJoin();
+    if (!state) return paint(`<section class="panel"><h2>ルーム ${esc(roomCode)} に接続中…</h2>
+      ${stale ? '<p class="err">接続に時間がかかっています。通信状況を確認してください。</p>' : ''}</section>`, 'wait' + stale);
+    if (me && !state.players[me]) { me = null; LS.del('nc-me-' + roomCode) }
+    if (state.status === 'lobby') return renderLobby();
+    if (!me || !state.order.includes(me)) return renderWatch();
+    if (state.status === 'setup') return renderSetup();
+    if (state.status === 'play') return renderPlay();
+    if (state.status === 'over') return renderOver();
+  }
+
+  function renderJoin() {
+    paint(`<section class="panel">
+      <h2>通話しながら遊ぶ数字あてゲーム</h2>
+      <ul class="rules">
+        <li>2〜${MAX_PLAYERS}人。参加順に輪になり、ひとりが「次の人が当てる数字」を決めます。</li>
+        <li>自分のターンに通話で質問（例：「50より大きい？」）。</li>
+        <li>わかったら数字を入力。当たれば勝ち、はずれたら次の人のターン。</li>
+        <li>数字は 0〜9000兆。100までは1刻み、1000までは頭2桁（530など）、1万までは頭1桁（3000など）。万・億・兆も同じ決まりです。</li>
+      </ul>
+      <button class="big" id="createBtn">新しいルームを作る</button>
+      <p class="muted">ルームコードを教えてもらった場合はこちら</p>
+      <div class="row"><input id="joinCode" maxlength="8" placeholder="例: K7QP" autocomplete="off" style="text-transform:uppercase;font-family:var(--digit);letter-spacing:.15em">
+        <button id="joinBtn">参加</button></div>
+      <p class="err" id="joinErr"></p>
+    </section>`, 'join');
+    document.getElementById('createBtn').onclick = () => enterRoom(rid(4).toUpperCase().replace(/[^A-Z0-9]/g, 'X'), true);
+    const go = () => {
+      const c = document.getElementById('joinCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (c.length < 3) { document.getElementById('joinErr').textContent = 'ルームコードを入力してください。'; return }
+      enterRoom(c, false);
+    };
+    document.getElementById('joinBtn').onclick = go;
+    document.getElementById('joinCode').onkeydown = e => { if (e.key === 'Enter') go() };
+  }
+
+  function renderLobby() {
+    const ids = joined(), n = ids.length, full = n >= MAX_PLAYERS;
+    const sig = ['lobby', me, JSON.stringify(state.players), state.min, state.max, state.showAll].join('|');
+    const roster = ids.map((id, i) => `<li class="${id === me ? 'me' : ''}" style="--pc:var(--c${i % 6})"><span class="dot"></span>
+        <div class="who"><span class="nm">${esc(nameOf(id))}${id === me ? '（あなた）' : ''}</span>
+        ${n >= 2 ? `<span class="sub">${esc(nameOf(ids[(i + 1) % n]))}さんの数字を決める</span>` : ''}</div>
+        ${me && id !== me ? `<button class="ghost small" data-kick="${esc(id)}" style="margin-left:auto" aria-label="${esc(nameOf(id))}さんを外す">外す</button>` : ''}</li>`).join('');
+    paint(`<section class="panel">
+      <h2>${me ? (n >= 2 ? `${n}人そろいました` : 'ほかの参加者を待っています') : '名前を入れて参加'}</h2>
+      <p class="muted">通話でルームコード <b style="font-family:var(--digit);font-size:16px;letter-spacing:.15em;color:var(--fg)">${esc(roomCode)}</b> を伝えて、このページの「参加」から入ってもらいます。</p>
+      ${n ? `<ul class="roster">${roster}</ul>` : '<p class="muted">まだ誰もいません。</p>'}
+      ${!me ? (full ? `<p class="muted">満員です（${MAX_PLAYERS}人まで）。</p>` : `
+        <div class="row"><input id="nameIn" placeholder="名前" maxlength="16" autocomplete="off"><button id="sitBtn">参加する</button></div>`) : ''}
+      <div class="range"><span>数字の範囲</span>
+        ${picker('min', state.min, { fresh: true, disabled: !me })} 〜 ${picker('max', state.max, { fresh: true, disabled: !me })}</div>
+      <p class="muted">選べる数字は ${inRange().length} 通り。100までは1刻み、1000までは頭2桁、1万までは頭1桁。万・億・兆も同じ決まりです。</p>
+      <label class="opt"><input type="checkbox" id="showAllIn" ${state.showAll ? 'checked' : ''} ${me ? '' : 'disabled'}>
+        <span>自分以外の全員の数字を見えるようにする<br><span class="muted">オンなら誰でも質問に答えられます。オフなら数字を決めた人だけが知っています。</span></span></label>
+      <p class="err" id="lobbyErr"></p>
+      ${me ? `<button class="big" id="startBtn" ${n >= 2 ? '' : 'disabled'}>${n}人で数字を決めにすすむ</button>
+        <button class="ghost" id="standBtn">参加をやめる</button>` : ''}
+    </section>`, sig);
+    view.querySelectorAll('[data-kick]').forEach(b => { b.onclick = () => write({ players: { [b.dataset.kick]: null } }) });
+    const sb = document.getElementById('sitBtn');
+    if (sb) { sb.onclick = sit; document.getElementById('nameIn').onkeydown = e => { if (e.key === 'Enter') sit() } }
+    const saveRange = () => {
+      const mn = readPicker('min'), mx = readPicker('max');
+      if (!(mn < mx)) { document.getElementById('lobbyErr').textContent = '範囲は「小さい数 〜 大きい数」で選んでください。'; return }
+      document.getElementById('lobbyErr').textContent = '';
+      if (mn !== state.min || mx !== state.max) write({ min: mn, max: mx });
+    };
+    ['minN', 'minU', 'maxN', 'maxU'].forEach(id => { document.getElementById(id).onchange = saveRange });
+    document.getElementById('showAllIn').onchange = e => write({ showAll: e.target.checked });
+    const st = document.getElementById('startBtn');
+    if (st) st.onclick = () => {
+      const o = joined(); if (o.length < 2) return;
+      const secrets = {}; o.forEach(id => secrets[id] = null);
+      const f = (state.firstIdx || 0) % o.length;
+      write({ status: 'setup', order: o, secrets, log: [], winner: null, firstIdx: f, turnIdx: f });
+    };
+    const sd = document.getElementById('standBtn');
+    if (sd) sd.onclick = async () => { const id = me; me = null; LS.del('nc-me-' + roomCode); await write({ players: { [id]: null } }); lastSig = ''; render() };
+  }
+
+  async function sit() {
+    const name = (document.getElementById('nameIn').value || '').trim();
+    if (!name) { document.getElementById('lobbyErr').textContent = '名前を入力してください。'; return }
+    if (joined().length >= MAX_PLAYERS) return;
+    const id = rid(8);
+    me = id; LS.set('nc-me-' + roomCode, id);
+    await write({ players: { [id]: { name, t: Date.now() } } });
+    lastSig = ''; render();
+  }
+
+  function rosterHtml(opts) {
+    const o = state.order, t = state.status === 'play' ? turnId() : null;
+    return `<ul class="roster">${o.map((id, i) => {
+      let val;
+      if (opts.reveal) val = `<span class="val">${fmt(state.secrets[id])}</span>`;
+      else if (opts.setup) val = `<span class="val hid">${state.secrets[id] != null ? '決定済み' : '考え中…'}</span>`;
+      else if (id === me) val = `<span class="val">？？</span>`;
+      else if (canSee(id)) val = `<span class="val">${fmt(state.secrets[id])}</span>`;
+      else val = `<span class="val hid">非公開</span>`;
+      const sub = opts.setup ? `${esc(nameOf(setterOf(id)))}さんが決める` : `${esc(nameOf(setterOf(id)))}さんが決めた数字`;
+      const badge = id === t ? '<span class="badge">ターン</span>' : (state.winner === id ? '<span class="badge">勝ち</span>' : '');
+      return `<li class="${id === me ? 'me' : ''}${id === t ? ' turn' : ''}" style="--pc:var(--c${i % 6})"><span class="dot"></span>
+        <div class="who"><span class="nm">${esc(nameOf(id))}${id === me ? '（あなた）' : ''}</span><span class="sub">${sub}</span></div>${badge}${val}</li>`;
+    }).join('')}</ul>`;
+  }
+
+  function renderWatch() {
+    const sig = ['watch', state.status, state.turnIdx, state.log.length, state.winner, JSON.stringify(state.players)].join('|');
+    paint(`<section class="panel">
+      <h2>ゲーム中です</h2>
+      <p class="muted">このラウンドが終わってロビーに戻ったら参加できます。</p>
+      ${rosterHtml({ setup: state.status === 'setup', reveal: state.status === 'over' })}
+    </section>`, sig);
+  }
+
+  function renderSetup() {
+    const target = nextOf(me), mine = state.secrets[target];
+    const sig = ['setup', me, JSON.stringify(state.secrets), state.round, JSON.stringify(state.players)].join('|');
+    paint(`<section class="panel" style="--pc:${colorOf(target)}">
+      <h2>${esc(nameOf(target))}さんが当てる数字を決めてください</h2>
+      <p class="muted">${rangeTxt()} から選びます（${inRange().length} 通り）。${esc(nameOf(target))}さんの画面には表示されません。</p>
+      ${mine == null ? `
+        <div class="row">${picker('secret', state.min)}<button id="secretBtn">決定</button></div>
+        <button class="ghost" id="randBtn">ランダムで決める</button>` : `
+        <div class="lcd"><small>あなたが決めた数字</small>${fmt(mine)}</div>
+        <button class="ghost" id="redoBtn">決め直す</button>`}
+      <p class="err" id="setupErr"></p>
+    </section>
+    <section class="panel"><h2>みんなの準備</h2>${rosterHtml({ setup: true })}</section>`, sig);
+    const sb = document.getElementById('secretBtn');
+    if (sb) {
+      sb.onclick = () => setSecret(readPicker('secret'));
+      document.getElementById('randBtn').onclick = () => { const r = inRange(); setSecret(r[Math.floor(Math.random() * r.length)]) };
+    }
+    const rb = document.getElementById('redoBtn');
+    if (rb) rb.onclick = () => write({ secrets: { [target]: null } });
+  }
+
+  async function setSecret(n) {
+    if (!VALID.has(n) || n < state.min || n > state.max) {
+      document.getElementById('setupErr').textContent = `${rangeTxt()} の中から選んでください。`; return;
+    }
+    await write({ secrets: { [nextOf(me)]: n } });
+    const snap = await ref.get(); const cur = snap.data();
+    if (cur && cur.status === 'setup' && Array.isArray(cur.order) && cur.order.every(id => cur.secrets && cur.secrets[id] != null)) {
+      await write({ status: 'play', turnIdx: cur.firstIdx || 0 });
+    }
+  }
+
+  function logHtml() {
+    if (!state.log.length) return '<p class="muted">まだ回答はありません。</p>';
+    return `<ol class="log" id="logList">${state.log.map(e => `<li style="--pc:${colorOf(e.p)}"><span class="dot"></span>
+      <span>${esc(nameOf(e.p))}</span>
+      ${e.pass ? '<span class="r ps">回答せずパス</span>' : `<span class="g">${fmt(e.g)}</span><span class="r ${e.ok ? 'ok' : 'ng'}">${e.ok ? 'あたり！' : 'はずれ'}</span>`}</li>`).join('')}</ol>`;
+  }
+
+  function renderPlay() {
+    const t = turnId(), myTurn = t === me;
+    const sig = ['play', me, state.turnIdx, state.log.length, state.round, JSON.stringify(state.players)].join('|');
+    let call;
+    if (myTurn) call = `通話で質問して、わかったら数字を入力しましょう。（${rangeTxt()}）<br><span class="muted">あなたの数字を知っているのは ${state.showAll ? 'ほかの全員' : esc(nameOf(setterOf(me))) + 'さん'} です。</span>`;
+    else if (canSee(t)) call = `${esc(nameOf(t))}さんの質問に、通話で答えてあげてください。${esc(nameOf(t))}さんの数字は <b style="font-family:var(--digit);font-size:20px">${fmt(state.secrets[t])}</b> です。`;
+    else call = `${esc(nameOf(t))}さんが ${esc(nameOf(setterOf(t)))}さんに質問中です。`;
+    paint(`<section class="panel" style="--pc:${colorOf(t)}">
+      <div class="turnbar"><span class="dot"></span>${myTurn ? 'あなたのターン' : esc(nameOf(t)) + 'さんのターン'}<span class="muted" style="margin-left:auto;font-weight:400">ラウンド ${state.round}</span></div>
+      <p class="callout">${call}</p>
+      ${myTurn ? `
+        <div class="row">${picker('guess', state.min)}<button id="guessBtn">回答する</button></div>
+        <p class="err" id="playErr"></p>
+        <button class="ghost" id="passBtn">回答せずに次の人へ</button>` : ''}
+    </section>
+    <section class="panel"><h2>みんなの数字</h2>${rosterHtml({})}</section>
+    <section class="panel"><h2>回答の記録</h2>${logHtml()}
+      <button class="ghost small" id="abortBtn" style="align-self:flex-start">ゲームを中断してロビーへ</button></section>`, sig);
+    const ll = document.getElementById('logList'); if (ll) ll.scrollTop = ll.scrollHeight;
+    const gb = document.getElementById('guessBtn');
+    if (gb) {
+      gb.onclick = () => guess(readPicker('guess'));
+      document.getElementById('passBtn').onclick = () => {
+        if (busy || turnId() !== me) return;
+        write({ turnIdx: (state.turnIdx + 1) % state.order.length, log: state.log.concat([{ p: me, pass: true }]) });
+      };
+    }
+    armAbort();
+  }
+
+  function armAbort() {
+    const ab = document.getElementById('abortBtn'); if (!ab) return;
+    let armed = false;
+    ab.onclick = () => {
+      if (!armed) { armed = true; ab.textContent = 'もう一度押すと中断します'; setTimeout(() => { armed = false; ab.textContent = 'ゲームを中断してロビーへ' }, 4000); return }
+      toLobby();
+    };
+  }
+  function toLobby() { write({ status: 'lobby', log: [], winner: null }) }
+
+  async function guess(n) {
+    if (busy || turnId() !== me) return;
+    if (!VALID.has(n) || n < state.min || n > state.max) {
+      document.getElementById('playErr').textContent = `${rangeTxt()} の中から選んでください。`; return;
+    }
+    const ok = n === state.secrets[me];
+    const log = state.log.concat([{ p: me, g: n, ok }]);
+    if (ok) await write({ status: 'over', winner: me, log });
+    else await write({ turnIdx: (state.turnIdx + 1) % state.order.length, log });
+  }
+
+  function renderOver() {
+    const w = state.winner, iWon = w === me, len = state.order.length;
+    const tries = state.log.filter(e => e.p === w && !e.pass).length;
+    const nextFirst = state.order[((state.firstIdx || 0) + 1) % len];
+    const sig = ['over', me, w, state.round, JSON.stringify(state.players)].join('|');
+    paint(`<section class="panel win" style="--pc:${colorOf(w)}">
+      <div class="crown">${iWon ? 'あなたの勝ち！' : esc(nameOf(w)) + 'さんの勝ち'}</div>
+      <p class="muted">${tries} 回目の回答で正解しました。</p>
+      ${rosterHtml({ reveal: true })}
+      <button class="big" id="againBtn">同じメンバーでもう一度</button>
+      <p class="muted">次のラウンドは ${esc(nameOf(nextFirst))}さんが先攻です。</p>
+      <button class="ghost" id="lobbyBtn">メンバーを変える（ロビーへ）</button>
+    </section>
+    <section class="panel"><h2>回答の記録</h2>${logHtml()}</section>`, sig);
+    document.getElementById('againBtn').onclick = () => {
+      if (busy) return;
+      const f = ((state.firstIdx || 0) + 1) % len;
+      const secrets = {}; state.order.forEach(id => secrets[id] = null);
+      write({ status: 'setup', secrets, log: [], winner: null, firstIdx: f, turnIdx: f, round: (state.round || 1) + 1 });
+    };
+    document.getElementById('lobbyBtn').onclick = () => write({ status: 'lobby', log: [], winner: null, firstIdx: ((state.firstIdx || 0) + 1) % len, round: (state.round || 1) + 1 });
+  }
+
+  // ---------- data ----------
+  async function write(patch) {
+    if (busy) return; busy = true;
+    try { await ref.update(patch) }
+    catch (e) {
+      const m = e && e.code === 'invalid_argument' ? 'このルームに書き込む権限がありません。共有設定を確認してください。' : '保存できませんでした。もう一度お試しください。';
+      const el = view.querySelector('.err'); if (el) el.textContent = m;
+    } finally { busy = false }
+  }
+
+  async function enterRoom(code, create) {
+    roomCode = code; state = null; stale = false; lastSig = '';
+    try { location.hash = code } catch (e) {}
+    me = LS.get('nc-me-' + code);
+    ref = db.doc('rooms/' + code);
+    render();
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) {
+        if (!create) {
+          roomCode = null; ref = null; lastSig = ''; try { history.replaceState(null, '', location.pathname + location.search) } catch (e) {}
+          render(); const el = document.getElementById('joinErr'); if (el) el.textContent = `ルーム ${code} は見つかりませんでした。コードを確認してください。`;
+          return;
+        }
+        await ref.set(freshRoom());
+      }
+    } catch (e) { /* the subscription below reports problems */ }
+    if (unsub) unsub();
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => { if (!state) { stale = true; render() } }, 10000);
+    unsub = ref.onSnapshot(s => {
+      if (!s.metadata.fromCache) clearTimeout(loadTimer);
+      if (!s.exists) return;
+      const d = s.data();
+      state = { ...freshRoom(), ...d, players: { ...(d.players || {}) }, secrets: { ...(d.secrets || {}) },
+        order: Array.isArray(d.order) ? d.order : [], log: Array.isArray(d.log) ? d.log : [] };
+      if (state.status !== 'lobby' && state.order.length < 2) state.status = 'lobby';
+      render();
+    }, () => { clearTimeout(loadTimer); stale = true; render() });
+  }
+
+  async function leave() {
+    if (me && state && state.status === 'lobby' && ref) { await write({ players: { [me]: null } }); LS.del('nc-me-' + roomCode) }
+    if (unsub) unsub(); unsub = null; ref = null; state = null; roomCode = null; me = null; lastSig = '';
+    try { history.replaceState(null, '', location.pathname + location.search) } catch (e) {}
+    render();
+  }
+  document.getElementById('leaveBtn').onclick = leave;
+
+  async function start() {
+    const c = window.claude;
+    db = c && c.use ? await c.use('db').catch(() => null) : null;
+    if (!db) {
+      paint(`<section class="panel"><h2>この画面ではオンライン対戦が使えません</h2>
+        <p>みんなの画面をつなぐには、claude.ai にサインインした状態でこのページを開いてください。</p></section>`, 'nodb');
+      return;
+    }
+    const h = (location.hash || '').replace('#', '').toUpperCase();
+    if (/^[A-Z0-9]{3,8}$/.test(h)) enterRoom(h, false); else render();
+  }
+  start();
+})();
+</script>

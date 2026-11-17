@@ -1,0 +1,13 @@
+{
+  "name": "number-call",
+  "version": "1.0.0",
+  "description": "通話しながら2〜8人で遊ぶ数字あてゲーム",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
