@@ -19,6 +19,10 @@ for (let i = 1000; i <= 9900; i += 100) BASE.push(i);
 const UNITS = [1, 1e4, 1e8, 1e12];
 const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
 const VALID = new Set(UNITS.flatMap(u => BASE.map(b => b * u)).filter(v => v <= MAX_ALL));
+// 「おしい」: 選べる数字を小さい順に並べたとき、正解の前後4つ以内ならおしい
+const CLOSE_STEPS = 4;
+const VALUE_IDX = new Map([...VALID].sort((a, b) => a - b).map((v, i) => [v, i]));
+const isClose = (g, secret) => Math.abs(VALUE_IDX.get(g) - VALUE_IDX.get(secret)) <= CLOSE_STEPS;
 
 // ---- ルーム ----
 /** code -> { state, tokens: Map<token, playerId>, clients: Set<{res, id}>, touched } */
@@ -34,12 +38,14 @@ function newCode() {
   for (;;) { const c = rid(4, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'); if (!rooms.has(c)) return c; }
 }
 function freshState() {
-  return { status: 'lobby', min: MIN_ALL, max: MAX_ALL, showAll: true, players: {}, order: [], secrets: {},
+  return { status: 'lobby', min: MIN_ALL, max: MAX_ALL, showAll: true, closeOn: true, players: {}, order: [], secrets: {},
     firstIdx: 0, turnIdx: 0, log: [], winner: null, round: 1, hints: {} };
 }
-const HINT_EVERY = 3; // 3回答えるごとにヒント1回
+// ヒント: 最初は3回答えたら1回、そのあとは2回答えるごとに1回
+const HINT_FIRST = 3, HINT_EVERY = 2;
+const hintsEarned = n => n < HINT_FIRST ? 0 : 1 + Math.floor((n - HINT_FIRST) / HINT_EVERY);
 const guessesOf = (s, id) => s.log.filter(e => e.p === id && e.g != null).map(e => e.g);
-const hintsLeft = (s, id) => Math.floor(guessesOf(s, id).length / HINT_EVERY) - (s.hints[id] || 0);
+const hintsLeft = (s, id) => hintsEarned(guessesOf(s, id).length) - (s.hints[id] || 0);
 
 const joined = s => Object.keys(s.players).sort((a, b) => s.players[a].t - s.players[b].t);
 const nextOf = (s, id) => s.order[(s.order.indexOf(id) + 1) % s.order.length];
@@ -57,7 +63,7 @@ function viewFor(room, me) {
     const visible = s.status === 'over' || (inGame && id !== me && (s.showAll || setterOf(s, id) === me));
     if (visible && v != null) secrets[id] = v;
   }
-  return { ...s, secrets, decided, me: me || null, hintEvery: HINT_EVERY };
+  return { ...s, secrets, decided, me: me || null, hintFirst: HINT_FIRST, hintEvery: HINT_EVERY, closeSteps: CLOSE_STEPS };
 }
 
 function send(res, data) { res.write(`data: ${JSON.stringify(data)}\n\n`); }
@@ -107,6 +113,7 @@ const actions = {
       s.min = mn; s.max = mx;
     }
     if (typeof body.showAll === 'boolean') s.showAll = body.showAll;
+    if (typeof body.closeOn === 'boolean') s.closeOn = body.closeOn;
     return {};
   },
   start(room) {
@@ -136,10 +143,11 @@ const actions = {
     const v = Number(body.value);
     if (!rangeOk(s, v)) fail('範囲の中から選んでください。');
     const ok = v === s.secrets[id];
-    s.log.push({ p: id, g: v, ok });
+    const close = !ok && s.closeOn !== false && isClose(v, s.secrets[id]);
+    s.log.push(close ? { p: id, g: v, ok, close } : { p: id, g: v, ok });
     if (ok) { s.status = 'over'; s.winner = id; }
     else s.turnIdx = (s.turnIdx + 1) % s.order.length;
-    return { ok };
+    return { ok, close };
   },
   pass(room, id) {
     const s = room.state;
@@ -166,7 +174,7 @@ const actions = {
   hint(room, id, body) {
     const s = room.state;
     if (s.status !== 'play' || turnId(s) !== id) fail('ヒントは自分のターンに使えます。');
-    if (hintsLeft(s, id) <= 0) fail(`まだヒントは使えません。${HINT_EVERY}回答えるごとに1回使えます。`);
+    if (hintsLeft(s, id) <= 0) fail(`まだヒントは使えません。最初は${HINT_FIRST}回、そのあとは${HINT_EVERY}回答えるごとに1回使えます。`);
     const secret = s.secrets[id];
     let entry;
     if (body.kind === 'closest') {
