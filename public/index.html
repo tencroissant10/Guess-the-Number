@@ -78,6 +78,9 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
 .log .g { font-family: var(--digit); font-size: 20px; min-width: 3.5em; font-variant-numeric: tabular-nums }
 .log .r { margin-left: auto; font-weight: 700; font-size: 13px }
 .log .r.ok { color: var(--ok) } .log .r.ng { color: var(--ng) } .log .r.ps { color: var(--muted); font-weight: 400 }
+.log .r.hint { color: var(--c4); font-weight: 700 }
+.hintbox { border-top: 1px dashed var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px }
+.myhints { margin: 0; padding-left: 1.2em; font-size: 14px; font-weight: 700 }
 .err { color: var(--ng); font-size: 13px; min-height: 1em }
 .win { text-align: center; align-items: center }
 .win .crown { font-family: var(--display); font-size: 34px; color: var(--pc) }
@@ -109,19 +112,36 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
   const BASE = []; for (let i = 0; i <= 100; i++) BASE.push(i); for (let i = 110; i <= 990; i += 10) BASE.push(i); for (let i = 1000; i <= 9000; i += 1000) BASE.push(i);
   const BASE_SET = new Set(BASE);
   const UNITS = [{ v: 1, k: '' }, { v: 1e4, k: '万' }, { v: 1e8, k: '億' }, { v: 1e12, k: '兆' }];
+  const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
   const VALUES = [...new Set(UNITS.flatMap(u => BASE.map(b => b * u.v)))].sort((a, b) => a - b);
   function split(n) {
+    if (!n) return { b: 0, u: 1 };
     for (let i = UNITS.length - 1; i >= 0; i--) { const u = UNITS[i]; if (n % u.v === 0 && BASE_SET.has(n / u.v)) return { b: n / u.v, u: u.v } }
     return { b: 0, u: 1 };
   }
   function fmt(n) { if (n == null) return '-'; const s = split(n); return s.b + UNITS.find(u => u.v === s.u).k }
   const rangeTxt = () => `${fmt(state.min)} 〜 ${fmt(state.max)}`;
   const inRange = () => VALUES.filter(v => v >= state.min && v <= state.max);
+  // 範囲 [mn, mx] の中の数字だけを選べるピッカー。単位を変えると数字の候補が入れ替わる
+  const basesIn = (u, mn, mx) => BASE.filter(b => b * u >= mn && b * u <= mx);
+  const optList = (bs, sel) => bs.map(b => `<option value="${b}"${b === sel ? ' selected' : ''}>${b}</option>`).join('');
   function picker(prefix, value, opts) {
-    const s = split(value == null ? 0 : value), fresh = opts && opts.fresh ? ' data-fresh="1"' : '', dis = opts && opts.disabled ? ' disabled' : '';
-    return `<span class="picker">
-      <select id="${prefix}N" class="num" aria-label="数字"${fresh}${dis}>${BASE.map(b => `<option value="${b}"${b === s.b ? ' selected' : ''}>${b}</option>`).join('')}</select>
-      <select id="${prefix}U" class="unit" aria-label="単位"${fresh}${dis}>${UNITS.map(u => `<option value="${u.v}"${u.v === s.u ? ' selected' : ''}>${u.k || '—'}</option>`).join('')}</select></span>`;
+    opts = opts || {};
+    const mn = opts.min != null ? opts.min : state.min, mx = opts.max != null ? opts.max : state.max;
+    const units = UNITS.filter(u => basesIn(u.v, mn, mx).length);
+    let v = value == null || value < mn || value > mx ? mn : value;
+    let s = split(v); if (!units.some(u => u.v === s.u)) s = { b: basesIn(units[0].v, mn, mx)[0], u: units[0].v };
+    const fresh = opts.fresh ? ' data-fresh="1"' : '', dis = opts.disabled ? ' disabled' : '';
+    return `<span class="picker" data-min="${mn}" data-max="${mx}">
+      <select id="${prefix}N" class="num" aria-label="数字"${fresh}${dis}>${optList(basesIn(s.u, mn, mx), s.b)}</select>
+      <select id="${prefix}U" class="unit" aria-label="単位"${fresh}${dis}>${units.map(u => `<option value="${u.v}"${u.v === s.u ? ' selected' : ''}>${u.k || '—'}</option>`).join('')}</select></span>`;
+  }
+  function syncPicker(sp) {
+    const mn = Number(sp.dataset.min), mx = Number(sp.dataset.max);
+    const uSel = sp.querySelector('.unit'), nSel = sp.querySelector('.num');
+    if (!uSel.value) uSel.selectedIndex = 0;
+    const want = parseInt(nSel.value, 10), bs = basesIn(Number(uSel.value), mn, mx);
+    nSel.innerHTML = optList(bs, bs.includes(want) ? want : bs[0]);
   }
   const readPicker = p => parseInt(document.getElementById(p + 'N').value, 10) * Number(document.getElementById(p + 'U').value);
 
@@ -193,7 +213,14 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
     view.querySelectorAll('input[id], select[id]').forEach(i => { keep[i.id] = i.value });
     if (document.activeElement && document.activeElement.id) focusId = document.activeElement.id;
     view.innerHTML = html;
-    Object.keys(keep).forEach(id => { const el = document.getElementById(id); if (el && !el.dataset.fresh && el.type !== 'checkbox') el.value = keep[id] });
+    Object.keys(keep).forEach(id => { const el = document.getElementById(id); if (el && !el.dataset.fresh && el.type !== 'checkbox' && /U$/.test(id)) el.value = keep[id] });
+    view.querySelectorAll('.picker').forEach(sp => {
+      const n = sp.querySelector('.num');
+      syncPicker(sp); // 単位に合わせて数字の候補を作り直してから、入力中だった値を戻す
+      if (!n.dataset.fresh && keep[n.id] != null && [...n.options].some(o => o.value === keep[n.id])) n.value = keep[n.id];
+      sp.querySelector('.unit').addEventListener('change', () => syncPicker(sp));
+    });
+    Object.keys(keep).forEach(id => { const el = document.getElementById(id); if (el && !el.dataset.fresh && el.type !== 'checkbox' && el.tagName !== 'SELECT') el.value = keep[id] });
     if (focusId) { const el = document.getElementById(focusId); if (el) el.focus() }
   }
 
@@ -217,6 +244,7 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
         <li>2〜${MAX_PLAYERS}人。参加順に輪になり、ひとりが「次の人が当てる数字」を決めます。</li>
         <li>自分のターンに通話で質問（例：「50万より大きい？」）。</li>
         <li>わかったら数字を入力。当たれば勝ち、はずれたら次の人のターン。</li>
+        <li>3回答えるごとにヒントを1回使えます（一番近かった回答を見る／ある数字以上か未満かを聞く）。</li>
         <li>数字は 0〜9000兆。100までは1刻み、1000までは頭2桁（530など）、1万までは頭1桁（3000など）。万・億・兆も同じ決まりです。</li>
       </ul>
       <button class="big" id="createBtn">新しいルームを作る</button>
@@ -258,7 +286,7 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
       ${!my ? (full ? `<p class="muted">満員です（${MAX_PLAYERS}人まで）。</p>` : `
         <div class="row"><input id="nameIn" placeholder="名前" maxlength="16" autocomplete="off"><button id="sitBtn">参加する</button></div>`) : ''}
       <div class="range"><span>数字の範囲</span>
-        ${picker('min', state.min, { fresh: true, disabled: !my })} 〜 ${picker('max', state.max, { fresh: true, disabled: !my })}</div>
+        ${picker('min', state.min, { fresh: true, disabled: !my, min: MIN_ALL, max: MAX_ALL })} 〜 ${picker('max', state.max, { fresh: true, disabled: !my, min: MIN_ALL, max: MAX_ALL })}</div>
       <p class="muted">選べる数字は ${inRange().length} 通り。</p>
       <label class="opt"><input type="checkbox" id="showAllIn" ${state.showAll ? 'checked' : ''} ${my ? '' : 'disabled'}>
         <span>自分以外の全員の数字を見えるようにする<br><span class="muted">オンなら誰でも質問に答えられます。オフなら数字を決めた人だけが知っています。</span></span></label>
@@ -347,7 +375,25 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
     if (!state.log.length) return '<p class="muted">まだ回答はありません。</p>';
     return `<ol class="log" id="logList">${state.log.map(e => `<li style="--pc:${colorOf(e.p)}"><span class="dot"></span>
       <span>${esc(nameOf(e.p))}</span>
-      ${e.pass ? '<span class="r ps">回答せずパス</span>' : `<span class="g">${fmt(e.g)}</span><span class="r ${e.ok ? 'ok' : 'ng'}">${e.ok ? 'あたり！' : 'はずれ'}</span>`}</li>`).join('')}</ol>`;
+      ${e.pass ? '<span class="r ps">回答せずパス</span>' : e.hint ? `<span class="r hint">${hintText(e)}</span>` : `<span class="g">${fmt(e.g)}</span><span class="r ${e.ok ? 'ok' : 'ng'}">${e.ok ? 'あたり！' : 'はずれ'}</span>`}</li>`).join('')}</ol>`;
+  }
+  function hintText(e) {
+    if (e.hint === 'closest') return `ヒント：一番近い回答は ${e.v.map(fmt).join(' と ')}`;
+    return `ヒント：${fmt(e.x)} ${e.ge ? '以上' : '未満'}`;
+  }
+  const myGuessCount = () => state.log.filter(e => e.p === me() && e.g != null).length;
+  const hintsLeft = () => Math.floor(myGuessCount() / state.hintEvery) - ((state.hints || {})[me()] || 0);
+
+  function hintBox() {
+    const left = hintsLeft(), mine = state.log.filter(e => e.p === me() && e.hint);
+    const toNext = state.hintEvery - (myGuessCount() % state.hintEvery);
+    return `<div class="hintbox">
+      ${left > 0 ? `<p><b>ヒントが使えます（${left}回）</b> <span class="muted">使ってもターンは続きます</span></p>
+        <button class="ghost" id="hintClosest">今までの回答で一番近い数字を見る</button>
+        <div class="row">${picker('hintx', state.min)}<button class="ghost" id="hintCmp">以上？未満？を聞く</button></div>`
+      : `<p class="muted">あと ${toNext} 回答えるとヒントが1回使えます。</p>`}
+      ${mine.length ? `<ul class="myhints">${mine.map(e => `<li>${hintText(e)}</li>`).join('')}</ul>` : ''}
+    </div>`;
   }
 
   function renderPlay() {
@@ -363,7 +409,8 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
       ${myTurn ? `
         <div class="row">${picker('guess', state.min)}<button id="guessBtn">回答する</button></div>
         <p class="err" id="playErr"></p>
-        <button class="ghost" id="passBtn">回答せずに次の人へ</button>` : ''}
+        <button class="ghost" id="passBtn">回答せずに次の人へ</button>
+        ${hintBox()}` : ''}
     </section>
     <section class="panel"><h2>みんなの数字</h2>${rosterHtml({})}</section>
     <section class="panel"><h2>回答の記録</h2>${logHtml()}
@@ -377,6 +424,11 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
         api('guess', { value: v });
       };
       document.getElementById('passBtn').onclick = () => api('pass');
+      const hc = document.getElementById('hintClosest');
+      if (hc) {
+        hc.onclick = () => api('hint', { kind: 'closest' });
+        document.getElementById('hintCmp').onclick = () => api('hint', { kind: 'compare', value: readPicker('hintx') });
+      }
     }
     const ab = document.getElementById('abortBtn'); let armed = false;
     ab.onclick = () => {
@@ -387,7 +439,7 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
 
   function renderOver() {
     const my = me(), w = state.winner, len = state.order.length;
-    const tries = state.log.filter(e => e.p === w && !e.pass).length;
+    const tries = state.log.filter(e => e.p === w && e.g != null).length;
     const nextFirst = state.order[(state.firstIdx + 1) % len];
     const sig = ['over', my, w, state.round].join('|');
     paint(`<section class="panel win" style="--pc:${colorOf(w)}">

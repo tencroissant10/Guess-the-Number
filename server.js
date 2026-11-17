@@ -35,8 +35,11 @@ function newCode() {
 }
 function freshState() {
   return { status: 'lobby', min: MIN_ALL, max: MAX_ALL, showAll: true, players: {}, order: [], secrets: {},
-    firstIdx: 0, turnIdx: 0, log: [], winner: null, round: 1 };
+    firstIdx: 0, turnIdx: 0, log: [], winner: null, round: 1, hints: {} };
 }
+const HINT_EVERY = 3; // 3回答えるごとにヒント1回
+const guessesOf = (s, id) => s.log.filter(e => e.p === id && e.g != null).map(e => e.g);
+const hintsLeft = (s, id) => Math.floor(guessesOf(s, id).length / HINT_EVERY) - (s.hints[id] || 0);
 
 const joined = s => Object.keys(s.players).sort((a, b) => s.players[a].t - s.players[b].t);
 const nextOf = (s, id) => s.order[(s.order.indexOf(id) + 1) % s.order.length];
@@ -54,7 +57,7 @@ function viewFor(room, me) {
     const visible = s.status === 'over' || (inGame && id !== me && (s.showAll || setterOf(s, id) === me));
     if (visible && v != null) secrets[id] = v;
   }
-  return { ...s, secrets, decided, me: me || null };
+  return { ...s, secrets, decided, me: me || null, hintEvery: HINT_EVERY };
 }
 
 function send(res, data) { res.write(`data: ${JSON.stringify(data)}\n\n`); }
@@ -111,7 +114,7 @@ const actions = {
     if (s.status !== 'lobby') fail('すでに始まっています。');
     const o = joined(s);
     if (o.length < 2) fail('2人以上で始められます。');
-    s.order = o; s.secrets = {}; s.log = []; s.winner = null;
+    s.order = o; s.secrets = {}; s.log = []; s.winner = null; s.hints = {};
     s.firstIdx = s.firstIdx % o.length; s.turnIdx = s.firstIdx;
     s.status = 'setup';
     return {};
@@ -149,15 +152,35 @@ const actions = {
     const s = room.state;
     if (s.status !== 'over') fail('まだ決着していません。');
     s.firstIdx = (s.firstIdx + 1) % s.order.length;
-    s.turnIdx = s.firstIdx; s.secrets = {}; s.log = []; s.winner = null; s.round += 1;
+    s.turnIdx = s.firstIdx; s.secrets = {}; s.log = []; s.winner = null; s.hints = {}; s.round += 1;
     s.status = 'setup';
     return {};
   },
   lobby(room) {
     const s = room.state;
     if (s.status === 'over') { s.firstIdx = (s.firstIdx + 1) % Math.max(1, s.order.length); s.round += 1; }
-    s.status = 'lobby'; s.log = []; s.winner = null; s.secrets = {};
+    s.status = 'lobby'; s.log = []; s.winner = null; s.secrets = {}; s.hints = {};
     return {};
+  },
+  // ヒント: closest = 今までの回答で一番近い数字 / compare = 選んだ数字以上か未満か
+  hint(room, id, body) {
+    const s = room.state;
+    if (s.status !== 'play' || turnId(s) !== id) fail('ヒントは自分のターンに使えます。');
+    if (hintsLeft(s, id) <= 0) fail(`まだヒントは使えません。${HINT_EVERY}回答えるごとに1回使えます。`);
+    const secret = s.secrets[id];
+    let entry;
+    if (body.kind === 'closest') {
+      const gs = guessesOf(s, id);
+      const best = Math.min(...gs.map(g => Math.abs(g - secret)));
+      entry = { p: id, hint: 'closest', v: [...new Set(gs.filter(g => Math.abs(g - secret) === best))].sort((a, b) => a - b) };
+    } else if (body.kind === 'compare') {
+      const x = Number(body.value);
+      if (!rangeOk(s, x)) fail('範囲の中から選んでください。');
+      entry = { p: id, hint: 'compare', x, ge: secret >= x };
+    } else fail('ヒントの種類が正しくありません。');
+    s.hints[id] = (s.hints[id] || 0) + 1;
+    s.log.push(entry);
+    return entry;
   }
 };
 

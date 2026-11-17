@@ -106,6 +106,7 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
   const VALID = new Set(VALUES);
   const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
   function split(n) {
+    if (!n) return { b: 0, u: 1 };
     for (let i = UNITS.length - 1; i >= 0; i--) { const u = UNITS[i]; if (n % u.v === 0 && BASE_SET.has(n / u.v)) return { b: n / u.v, u: u.v } }
     return { b: 0, u: 1 };
   }
