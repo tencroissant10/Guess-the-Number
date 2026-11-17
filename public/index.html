@@ -109,11 +109,11 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
   const MAX_PLAYERS = 8;
 
   // ---- 選べる数字（サーバーと同じ決まり） ----
-  const BASE = []; for (let i = 0; i <= 100; i++) BASE.push(i); for (let i = 110; i <= 990; i += 10) BASE.push(i); for (let i = 1000; i <= 9000; i += 1000) BASE.push(i);
+  const BASE = []; for (let i = 0; i <= 100; i++) BASE.push(i); for (let i = 110; i <= 990; i += 10) BASE.push(i); for (let i = 1000; i <= 9900; i += 100) BASE.push(i);
   const BASE_SET = new Set(BASE);
   const UNITS = [{ v: 1, k: '' }, { v: 1e4, k: '万' }, { v: 1e8, k: '億' }, { v: 1e12, k: '兆' }];
   const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
-  const VALUES = [...new Set(UNITS.flatMap(u => BASE.map(b => b * u.v)))].sort((a, b) => a - b);
+  const VALUES = [...new Set(UNITS.flatMap(u => BASE.map(b => b * u.v)))].filter(v => v <= MAX_ALL).sort((a, b) => a - b);
   function split(n) {
     if (!n) return { b: 0, u: 1 };
     for (let i = UNITS.length - 1; i >= 0; i--) { const u = UNITS[i]; if (n % u.v === 0 && BASE_SET.has(n / u.v)) return { b: n / u.v, u: u.v } }
@@ -245,7 +245,7 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
         <li>自分のターンに通話で質問（例：「50万より大きい？」）。</li>
         <li>わかったら数字を入力。当たれば勝ち、はずれたら次の人のターン。</li>
         <li>3回答えるごとにヒントを1回使えます（一番近かった回答を見る／ある数字以上か未満かを聞く）。</li>
-        <li>数字は 0〜9000兆。100までは1刻み、1000までは頭2桁（530など）、1万までは頭1桁（3000など）。万・億・兆も同じ決まりです。</li>
+        <li>数字は 0〜9000兆。100までは1刻み、100からは頭2桁（530、1200、9900 など）。万・億・兆も同じ決まりです。</li>
       </ul>
       <button class="big" id="createBtn">新しいルームを作る</button>
       <p class="muted">ルームコードを教えてもらった場合はこちら</p>
@@ -274,15 +274,16 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
 
   function renderLobby() {
     const ids = joined(), n = ids.length, full = n >= MAX_PLAYERS, my = me();
-    const sig = ['lobby', my, JSON.stringify(state.players), state.min, state.max, state.showAll].join('|');
-    const roster = ids.map((id, i) => `<li class="${id === my ? 'me' : ''}" style="--pc:var(--c${i % 6})"><span class="dot"></span>
+    // 入力欄のある部分は「自分に関係する変化」でだけ描き直す。参加者一覧などは別に更新する
+    const sig = ['lobby', my, state.min, state.max, state.showAll, full].join('|');
+    const roster = n ? `<ul class="roster">` + ids.map((id, i) => `<li class="${id === my ? 'me' : ''}" style="--pc:var(--c${i % 6})"><span class="dot"></span>
         <div class="who"><span class="nm">${esc(nameOf(id))}${id === my ? '（あなた）' : ''}</span>
         ${n >= 2 ? `<span class="sub">${esc(nameOf(ids[(i + 1) % n]))}さんの数字を決める</span>` : ''}</div>
-        ${my && id !== my ? `<button class="ghost small" data-kick="${esc(id)}" style="margin-left:auto" aria-label="${esc(nameOf(id))}さんを外す">外す</button>` : ''}</li>`).join('');
+        ${my && id !== my ? `<button class="ghost small" data-kick="${esc(id)}" style="margin-left:auto" aria-label="${esc(nameOf(id))}さんを外す">外す</button>` : ''}</li>`).join('') + `</ul>` : '<p class="muted">まだ誰もいません。</p>';
     paint(`<section class="panel">
-      <h2>${my ? (n >= 2 ? `${n}人そろいました` : 'ほかの参加者を待っています') : '名前を入れて参加'}</h2>
+      <h2 id="lobbyTitle"></h2>
       <p class="muted">通話でルームコード <b style="font-family:var(--digit);font-size:16px;letter-spacing:.15em;color:var(--fg)">${esc(roomCode)}</b> を伝えて、このページの「参加」から入ってもらいます。</p>
-      ${n ? `<ul class="roster">${roster}</ul>` : '<p class="muted">まだ誰もいません。</p>'}
+      <div id="lobbyRoster"></div>
       ${!my ? (full ? `<p class="muted">満員です（${MAX_PLAYERS}人まで）。</p>` : `
         <div class="row"><input id="nameIn" placeholder="名前" maxlength="16" autocomplete="off"><button id="sitBtn">参加する</button></div>`) : ''}
       <div class="range"><span>数字の範囲</span>
@@ -291,9 +292,13 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
       <label class="opt"><input type="checkbox" id="showAllIn" ${state.showAll ? 'checked' : ''} ${my ? '' : 'disabled'}>
         <span>自分以外の全員の数字を見えるようにする<br><span class="muted">オンなら誰でも質問に答えられます。オフなら数字を決めた人だけが知っています。</span></span></label>
       <p class="err" id="lobbyErr"></p>
-      ${my ? `<button class="big" id="startBtn" ${n >= 2 ? '' : 'disabled'}>${n}人で数字を決めにすすむ</button>
+      ${my ? `<button class="big" id="startBtn"></button>
         <button class="ghost" id="standBtn">参加をやめる</button>` : ''}
     </section>`, sig);
+    document.getElementById('lobbyTitle').textContent = my ? (n >= 2 ? `${n}人そろいました` : 'ほかの参加者を待っています') : '名前を入れて参加';
+    document.getElementById('lobbyRoster').innerHTML = roster;
+    const st = document.getElementById('startBtn');
+    if (st) { st.disabled = n < 2; st.textContent = `${n}人で数字を決めにすすむ` }
     view.querySelectorAll('[data-kick]').forEach(b => { b.onclick = () => api('kick', { target: b.dataset.kick }) });
     const sb = document.getElementById('sitBtn');
     if (sb) { sb.onclick = sit; document.getElementById('nameIn').onkeydown = e => { if (e.key === 'Enter') sit() } }
@@ -324,11 +329,12 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
     const o = state.order, t = state.status === 'play' ? turnId() : null, my = me();
     return `<ul class="roster">${o.map((id, i) => {
       let val;
-      if (opts.setup) val = `<span class="val hid">${state.decided[id] ? '決定済み' : '考え中…'}</span>`;
+      // 準備中は「この人が（次の人の）数字を決めたか」を表示する
+      if (opts.setup) val = `<span class="val hid">${state.decided[nextOf(id)] ? '決定済み' : '考え中…'}</span>`;
       else if (id === my && !opts.reveal) val = `<span class="val">？？</span>`;
       else if (known(id)) val = `<span class="val">${fmt(state.secrets[id])}</span>`;
       else val = `<span class="val hid">非公開</span>`;
-      const sub = opts.setup ? `${esc(nameOf(setterOf(id)))}さんが決める` : `${esc(nameOf(setterOf(id)))}さんが決めた数字`;
+      const sub = opts.setup ? `${esc(nameOf(nextOf(id)))}さんの数字を決める` :`${esc(nameOf(setterOf(id)))}さんが決めた数字`;
       const badge = id === t ? '<span class="badge">ターン</span>' : (state.winner === id ? '<span class="badge">勝ち</span>' : '');
       return `<li class="${id === my ? 'me' : ''}${id === t ? ' turn' : ''}" style="--pc:var(--c${i % 6})"><span class="dot"></span>
         <div class="who"><span class="nm">${esc(nameOf(id))}${id === my ? '（あなた）' : ''}</span><span class="sub">${sub}</span></div>${badge}${val}</li>`;
@@ -346,7 +352,8 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
 
   function renderSetup() {
     const my = me(), target = nextOf(my), mine = state.secrets[target];
-    const sig = ['setup', my, JSON.stringify(state.decided), mine, state.round].join('|');
+    // 他の人が決定・ランダムを押しても、自分の入力欄は描き直さない（下の一覧だけ更新）
+    const sig = ['setup', my, mine, state.round, state.min, state.max].join('|');
     paint(`<section class="panel" style="--pc:${colorOf(target)}">
       <h2>${esc(nameOf(target))}さんが当てる数字を決めてください</h2>
       <p class="muted">${rangeTxt()} から選びます（${inRange().length} 通り）。${esc(nameOf(target))}さんの画面には表示されません。</p>
@@ -357,7 +364,8 @@ label.opt { display: flex; gap: 10px; align-items: flex-start; font-size: 14px }
         <button class="ghost" id="redoBtn">決め直す</button>`}
       <p class="err" id="setupErr"></p>
     </section>
-    <section class="panel"><h2>みんなの準備</h2>${rosterHtml({ setup: true })}</section>`, sig);
+    <section class="panel"><h2>みんなの準備</h2><div id="setupRoster"></div></section>`, sig);
+    document.getElementById('setupRoster').innerHTML = rosterHtml({ setup: true });
     const sb = document.getElementById('secretBtn');
     if (sb) {
       sb.onclick = () => setSecret(readPicker('secret'));

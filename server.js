@@ -11,14 +11,14 @@ const MAX_PLAYERS = 8;
 const ROOM_IDLE_MS = 6 * 60 * 60 * 1000; // 誰も接続していないルームは6時間で削除
 
 // ---- 選べる数字 ----
-// 単位（なし・万・億・兆）ごとに: 0〜100 は全部、100〜1000 は頭2桁、1000〜9000 は頭1桁
+// 単位（なし・万・億・兆）ごとに: 0〜100 は全部、100 からは頭2桁（110, 530, 1200, 9900 …）。最大 9000兆
 const BASE = [];
 for (let i = 0; i <= 100; i++) BASE.push(i);
 for (let i = 110; i <= 990; i += 10) BASE.push(i);
-for (let i = 1000; i <= 9000; i += 1000) BASE.push(i);
+for (let i = 1000; i <= 9900; i += 100) BASE.push(i);
 const UNITS = [1, 1e4, 1e8, 1e12];
-const VALID = new Set(UNITS.flatMap(u => BASE.map(b => b * u)));
 const MIN_ALL = 0, MAX_ALL = 9000 * 1e12;
+const VALID = new Set(UNITS.flatMap(u => BASE.map(b => b * u)).filter(v => v <= MAX_ALL));
 
 // ---- ルーム ----
 /** code -> { state, tokens: Map<token, playerId>, clients: Set<{res, id}>, touched } */
